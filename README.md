@@ -16,7 +16,8 @@ Quick start
 
   ./install.sh
 
-- Ensure ~/.local/bin is in your PATH (installer prints instructions if needed).
+- The installer will check your PATH and provide guidance if needed.
+- If you have an existing Terminus installation, ensure ~/.local/bin comes first in your PATH.
 
 2) Import your existing PHAR (optional)
 - If you have a Terminus PHAR at /usr/local/bin/terminus:
@@ -47,7 +48,7 @@ Everyday usage
 
   terminus updates
 
-- Fetch a bunch of releases (first 200 tags):
+- Fetch multiple releases (versions >= 1.0.0):
 
   terminus update --all
 
@@ -73,9 +74,12 @@ Configuration
   - GITHUB_TOKEN — optional. Helps avoid GitHub API rate limits
 
 Notes
-- Make sure ~/.local/bin appears before /usr/local/bin in your PATH to override brew's terminus.
+- The installer will detect PATH conflicts and provide guidance.
+- Make sure ~/.local/bin appears before /usr/local/bin in your PATH to override existing terminus installations.
 - You can always invoke the manager explicitly as "terminus-vm":
 
   terminus-vm list
   terminus-vm use 4
+
+- The `update --all` command intelligently filters versions to avoid download failures.
 
