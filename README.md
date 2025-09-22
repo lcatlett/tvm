@@ -83,3 +83,36 @@ Notes
 
 - The `update --all` command intelligently filters versions to avoid download failures.
 
+## Development
+
+### Running Tests
+
+Run the test suite locally:
+
+```bash
+# Run all tests
+make test
+
+# Or run tests directly
+./tests/run_tests.sh
+
+# Test the installation process
+make test-install
+
+# Clean up test artifacts
+make clean
+```
+
+### Test Coverage
+
+The test suite covers:
+- Script file existence and permissions
+- Help and basic command functionality
+- Path and environment variable handling
+- Version management commands
+- Error handling
+- Installation process
+- Cross-platform compatibility
+
+Tests run automatically on GitHub Actions for both Ubuntu and macOS.
+
