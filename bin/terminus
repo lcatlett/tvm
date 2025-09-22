@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# Terminus Version Manager (shim + manager)
+# - Keeps PHARs under ~/.terminus/phars
+# - Intercepts "terminus use/install/update/updates/list/versions/current/which/path/import"
+# - Otherwise runs the currently selected PHAR transparently.
+set -euo pipefail
+
+# Config (overridable via env)
+DIR="${TERMINUS_VM_DIR:-$HOME/.terminus/phars}"
+CURRENT_FILE="$DIR/current"
+PHP_BIN="${TERMINUS_PHP:-php}"
+REPO_OWNER="pantheon-systems"
+REPO_NAME="terminus"
+
+# Utilities
+msg() { printf "%s\n" "$*" >&2; }
+die() { msg "Error: $*"; exit 1; }
+tvm_mkdir() { [ -d "$DIR" ] || mkdir -p "$DIR"; }
+
+gh_hdr() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    printf "Authorization: Bearer %s" "$GITHUB_TOKEN"
+  fi
+}
+
+tvm_list_tags() {
+  # Returns tag names (up to 200) one per line
+  local hdr; hdr="$(gh_hdr || true)"
+  if [ -n "$hdr" ]; then
+    curl -fsSL -H "$hdr" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/tags?per_page=200"
+  else
+    curl -fsSL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/tags?per_page=200"
+  fi | grep -o "\"name\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | cut -d'"' -f4
+}
+
+tvm_latest_release_tag() {
+  # Uses releases/latest to honor GitHub Release
+  local hdr; hdr="$(gh_hdr || true)"
+  if [ -n "$hdr" ]; then
+    curl -fsSL -H "$hdr" "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+  else
+    curl -fsSL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+  fi | grep -o "\"tag_name\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -n1 | cut -d'"' -f4
+}
+
+tvm_sort_versions() {
+  # Sort dot-separated numeric versions, portable on macOS/BSD
+  # Input: lines of "X.Y.Z"
+  awk -F. '{ printf "%010d.%010d.%010d %s\n", $1, ($2==""?0:$2), ($3==""?0:$3), $0 }' \
+    | sort \
+    | awk '{print $2}'
+}
+
+tvm_installed_versions() {
+  ls -1 "$DIR"/terminus-*.phar 2>/dev/null \
+    | sed -E 's#^.*/terminus-([0-9.]+)\.phar$#\1#' \
+    | tvm_sort_versions
+}
+
+tvm_get_current_version() {
+  [ -f "$CURRENT_FILE" ] && cat "$CURRENT_FILE" || true
+}
+
+tvm_set_current_version() {
+  local ver="${1:?version required}"
+  echo "$ver" > "$CURRENT_FILE"
+}
+
+tvm_resolve_version() {
+  # Accepts:
+  #   X.Y.Z -> exact
+  #   X.Y   -> latest in X.Y.*
+  #   X     -> latest in X.*
+  #   latest -> latest GitHub release tag
+  local want="${1:?version required}"
+  case "$want" in
+    latest) tvm_latest_release_tag; return ;;
+  esac
+  if printf "%s\n" "$want" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    printf "%s" "$want"; return
+  fi
+  local tags; tags="$(tvm_list_tags)"
+  if printf "%s\n" "$want" | grep -Eq '^[0-9]+$'; then
+    printf "%s\n" "$tags" | grep -E "^${want}\." | tvm_sort_versions | tail -n1
+    return
+  fi
+  if printf "%s\n" "$want" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+    printf "%s\n" "$tags" | grep -E "^${want}\." | tvm_sort_versions | tail -n1
+    return
+  fi
+  # Fallback: assume full tag provided
+  printf "%s" "$want"
+}
+
+tvm_download() {
+  local ver="${1:?version required}"
+  local dest="$DIR/terminus-$ver.phar"
+  local tmp="$dest.part"
+  local base="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$ver"
+  local url="$base/terminus.phar"
+  if [ -f "$dest" ]; then
+    msg "Terminus $ver already installed: $dest"
+    return 0
+  fi
+  msg "Downloading Terminus $ver ..."
+  if ! curl -fL "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    die "Failed to download $url"
+  fi
+  chmod +x "$tmp"
+  mv "$tmp" "$dest"
+  # Optional SHA256 verification if available
+  if curl -fsSL "$base/terminus.phar.sha256" -o "$dest.sha256" 2>/dev/null; then
+    local expected actual
+    expected="$(awk '{print $1}' "$dest.sha256" 2>/dev/null || true)"
+    if command -v shasum >/dev/null 2>&1; then
+      actual="$(shasum -a 256 "$dest" | awk '{print $1}')"
+    elif command -v sha256sum >/dev/null 2>&1; then
+      actual="$(sha256sum "$dest" | awk '{print $1}')"
+    else
+      actual=""
+    fi
+    if [ -n "$expected" ] && [ -n "$actual" ] && [ "$expected" != "$actual" ]; then
+      rm -f "$dest" "$dest.sha256"
+      die "SHA256 mismatch for Terminus $ver"
+    fi
+  fi
+  msg "Installed Terminus $ver -> $dest"
+}
+
+tvm_use() {
+  local want="${1:-}"
+  [ -n "$want" ] || die "Usage: terminus use <version|major|major.minor|latest>"
+  local ver; ver="$(tvm_resolve_version "$want")"
+  [ -n "$ver" ] || die "Could not resolve version for '$want'"
+  [ -f "$DIR/terminus-$ver.phar" ] || tvm_download "$ver"
+  tvm_set_current_version "$ver"
+  printf "Now using Terminus %s\n" "$ver"
+}
+
+tvm_update() {
+  local mode="${1:-}"
+  if [ "$mode" = "--all" ]; then
+    msg "Fetching all missing releases (first page of tags) ..."
+    local t
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      tvm_download "$t" || true
+    done < <(tvm_list_tags)
+    return 0
+  fi
+  local latest; latest="$(tvm_latest_release_tag)"
+  [ -n "$latest" ] || die "Could not determine latest release (rate-limited?). Set GITHUB_TOKEN."
+  tvm_download "$latest"
+  tvm_set_current_version "$latest"
+  printf "Now using Terminus %s\n" "$latest"
+}
+
+tvm_list() {
+  local curr; curr="$(tvm_get_current_version || true)"
+  local any=0
+  while IFS= read -r v; do
+    any=1
+    if [ -n "$curr" ] && [ "$v" = "$curr" ]; then
+      printf "* %s (current)\n" "$v"
+    else
+      printf "  %s\n" "$v"
+    fi
+  done < <(tvm_installed_versions)
+  [ "$any" = 1 ] || printf "(no versions installed yet)\n"
+}
+
+tvm_import() {
+  local src="${1:-}"
+  local ver="${2:-}"
+  [ -n "$src" ] || die "Usage: terminus import <path-to-phar> [version]"
+  [ -f "$src" ] || die "No such file: $src"
+  if [ -z "$ver" ]; then
+    # Try to detect version
+    ver="$("$src" --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+    [ -n "$ver" ] || die "Could not auto-detect version; provide it explicitly."
+  fi
+  local dest="$DIR/terminus-$ver.phar"
+  cp "$src" "$dest"
+  chmod +x "$dest"
+  printf "Imported Terminus %s -> %s\n" "$ver" "$dest"
+}
+
+tvm_help() {
+  cat <<HLP
+Terminus Version Manager
+
+Usage:
+  terminus use <version|major|major.minor|latest>
+  terminus install <version|major|major.minor|latest>
+  terminus update|updates [--all]
+  terminus list|versions
+  terminus current|which
+  terminus path
+  terminus import <path-to-phar> [version]
+
+Notes:
+  - Manager subcommands can also be prefixed: terminus @vm <cmd> ...
+  - For normal Terminus usage, run: terminus <args>
+  - Env vars:
+      TERMINUS_VM_DIR (default: ~/.terminus/phars)
+      TERMINUS_PHP    (default: php)
+      GITHUB_TOKEN    (optional, to avoid API rate limits)
+HLP
+}
+
+is_manager_cmd() {
+  case "${1:-}" in
+    @vm|use|install|update|updates|list|versions|current|which|path|import|help|-h|--help) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+run_manager() {
+  local sub="${1:-}"
+  shift || true
+  case "$sub" in
+    @vm) sub="${1:-}"; shift || true ;;
+  esac
+  case "$sub" in
+    use) tvm_mkdir; tvm_use "${1:-}";;
+    install)
+      tvm_mkdir
+      local want="${1:-}"; [ -n "$want" ] || die "Usage: terminus install <version|major|major.minor|latest>"
+      local ver; ver="$(tvm_resolve_version "$want")"; [ -n "$ver" ] || die "Could not resolve version."
+      tvm_download "$ver"; tvm_set_current_version "$ver"; printf "Now using Terminus %s\n" "$ver"
+      ;;
+    update|updates) tvm_mkdir; tvm_update "${1:-}";;
+    list|versions) tvm_mkdir; tvm_list;;
+    current|which)
+      tvm_mkdir
+      local v; v="$(tvm_get_current_version || true)"
+      if [ -n "$v" ]; then
+        printf "%s/terminus-%s.phar\n" "$DIR" "$v"
+      else
+        die "No Terminus version selected."
+      fi
+      ;;
+    path) printf "%s\n" "$DIR";;
+    import) tvm_mkdir; tvm_import "${1:-}" "${2:-}";;
+    help|-h|--help|"") tvm_help;;
+    *) die "Unknown command: $sub";;
+  esac
+}
+
+exec_current() {
+  tvm_mkdir
+  local curr; curr="$(tvm_get_current_version || true)"
+  local phar=""
+  if [ -n "$curr" ] && [ -f "$DIR/terminus-$curr.phar" ]; then
+    phar="$DIR/terminus-$curr.phar"
+  else
+    # Auto-install latest on first run
+    local latest; latest="$(tvm_latest_release_tag || true)"
+    if [ -n "$latest" ]; then
+      tvm_download "$latest"
+      tvm_set_current_version "$latest"
+      phar="$DIR/terminus-$latest.phar"
+      msg "Auto-selected Terminus $latest"
+    fi
+  fi
+  [ -f "$phar" ] || die "No Terminus PHAR available. Try: terminus updates"
+  exec "$PHP_BIN" "$phar" "$@"
+}
+
+main() {
+  local base; base="$(basename "$0")"
+  if [ "$base" = "terminus-vm" ]; then
+    run_manager "${1:-}" "${@:2}"
+    exit $?
+  fi
+  # If first arg is a manager command, handle it; else delegate to PHAR
+  if is_manager_cmd "${1:-}"; then
+    run_manager "$@"
+  else
+    exec_current "$@"
+  fi
+}
+
+main "$@"
