@@ -22,12 +22,33 @@ case ":$PATH:" in
   *) HAVE_BIN_IN_PATH=0 ;;
 esac
 
+# Check if there's an existing terminus that would take precedence
+EXISTING_TERMINUS=""
+if command -v terminus >/dev/null 2>&1; then
+  EXISTING_TERMINUS="$(command -v terminus)"
+fi
+
 if [ "$HAVE_BIN_IN_PATH" -eq 0 ]; then
   echo
-  echo "Add $BIN_DIR to your PATH. For zsh:"
+  echo "⚠️  $BIN_DIR is not in your PATH. Add it with:"
+  echo "For zsh:"
   echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
   echo "For bash:"
   echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+elif [ -n "$EXISTING_TERMINUS" ] && [ "$EXISTING_TERMINUS" != "$BIN_DIR/terminus" ]; then
+  echo
+  echo "⚠️  Found existing terminus at: $EXISTING_TERMINUS"
+  echo "This will take precedence over the version manager."
+  echo "To use the version manager, ensure $BIN_DIR comes first in PATH:"
+  echo "For zsh:"
+  echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+  echo "For bash:"
+  echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+  echo
+  echo "Or use the version manager directly: $BIN_DIR/terminus"
+else
+  echo
+  echo "✅ Terminus Version Manager is ready to use!"
 fi
 
 echo

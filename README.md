@@ -79,8 +79,3 @@ Notes
   terminus-vm list
   terminus-vm use 4
 
-Security
-- If the release provides a terminus.phar.sha256 file, it is used to verify the download.
-
-License
-- MIT (see LICENSE)

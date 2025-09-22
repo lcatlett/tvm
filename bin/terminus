@@ -142,11 +142,22 @@ tvm_update() {
   local mode="${1:-}"
   if [ "$mode" = "--all" ]; then
     msg "Fetching all missing releases (first page of tags) ..."
-    local t
+    local t success=0 failed=0 skipped=0
     while IFS= read -r t; do
       [ -n "$t" ] || continue
-      tvm_download "$t" || true
+      # Skip pre-release versions and non-standard tags
+      # Only process versions >= 1.0.0 as older versions likely don't have PHARs
+      if printf "%s\n" "$t" | grep -Eq '^v?[1-9][0-9]*\.[0-9]+\.[0-9]+$'; then
+        if tvm_download "$t"; then
+          success=$((success + 1))
+        else
+          failed=$((failed + 1))
+        fi
+      else
+        skipped=$((skipped + 1))
+      fi
     done < <(tvm_list_tags)
+    msg "Downloaded $success versions, $failed failed, $skipped skipped (pre-1.0 or invalid format)"
     return 0
   fi
   local latest; latest="$(tvm_latest_release_tag)"
