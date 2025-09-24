@@ -4,12 +4,13 @@ set -euo pipefail
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 
-echo "Installing terminus and terminus-vm into $BIN_DIR ..."
+echo "Installing TVM (tvm, terminus, terminus-vm) into $BIN_DIR ..."
 mkdir -p "$BIN_DIR"
 # Copy scripts
 cp -f "bin/terminus" "$BIN_DIR/terminus"
 cp -f "bin/terminus-vm" "$BIN_DIR/terminus-vm"
-chmod +x "$BIN_DIR/terminus" "$BIN_DIR/terminus-vm"
+cp -f "bin/tvm" "$BIN_DIR/tvm"
+chmod +x "$BIN_DIR/terminus" "$BIN_DIR/terminus-vm" "$BIN_DIR/tvm"
 
 # Ensure storage dir exists
 mkdir -p "${TERMINUS_VM_DIR:-$HOME/.terminus/phars}"
@@ -48,10 +49,10 @@ elif [ -n "$EXISTING_TERMINUS" ] && [ "$EXISTING_TERMINUS" != "$BIN_DIR/terminus
   echo "Or use the version manager directly: $BIN_DIR/terminus"
 else
   echo
-  echo "✅ Terminus Version Manager is ready to use!"
+  echo "✅ TVM is ready to use!"
 fi
 
 echo
 echo "Tip: Import your existing Terminus PHAR if needed, e.g.:"
-echo "  terminus import /usr/local/bin/terminus 3.6.2"
-echo "Then switch: terminus use 3.6.2, or install new: terminus install 4.0.3"
+echo "  tvm import /usr/local/bin/terminus 3.6.2"
+echo "Then switch: tvm use 3.6.2, or install new: tvm install 4.0.3"

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Test runner script for Terminus Version Manager
+# Test runner script for TVM - Terminus Version Manager
 
 set -euo pipefail
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Terminus Version Manager Test Suite"
-echo "=================================="
+echo "TVM Test Suite"
+echo "=============="
 echo
 
 # Check if we're in the right directory

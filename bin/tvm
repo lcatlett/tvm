@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# TVM - Terminus Version Manager alias
+# This is a convenient alias for terminus-vm
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec "$SCRIPT_DIR/terminus" "$@"

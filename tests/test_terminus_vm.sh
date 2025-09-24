@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for Terminus Version Manager
+# Tests for TVM - Terminus Version Manager
 
 set -euo pipefail
 
@@ -23,7 +23,8 @@ setup_test_env() {
     # Copy scripts to test directory
     cp "$PROJECT_DIR/bin/terminus" "$TEST_BIN_DIR/"
     cp "$PROJECT_DIR/bin/terminus-vm" "$TEST_BIN_DIR/"
-    chmod +x "$TEST_BIN_DIR/terminus" "$TEST_BIN_DIR/terminus-vm"
+    cp "$PROJECT_DIR/bin/tvm" "$TEST_BIN_DIR/"
+    chmod +x "$TEST_BIN_DIR/terminus" "$TEST_BIN_DIR/terminus-vm" "$TEST_BIN_DIR/tvm"
     
     # Set test environment variables
     export TERMINUS_VM_DIR="$TEST_TERMINUS_DIR"
@@ -41,8 +42,10 @@ test_script_files() {
     
     assert_file_exists "$PROJECT_DIR/bin/terminus" "terminus script exists"
     assert_file_exists "$PROJECT_DIR/bin/terminus-vm" "terminus-vm script exists"
+    assert_file_exists "$PROJECT_DIR/bin/tvm" "tvm script exists"
     assert_file_executable "$PROJECT_DIR/bin/terminus" "terminus script is executable"
     assert_file_executable "$PROJECT_DIR/bin/terminus-vm" "terminus-vm script is executable"
+    assert_file_executable "$PROJECT_DIR/bin/tvm" "tvm script is executable"
 }
 
 # Test: Help command works
@@ -52,10 +55,10 @@ test_help_command() {
     local output
     output="$("$TEST_BIN_DIR/terminus" help 2>&1)"
     
-    assert_contains "$output" "Terminus Version Manager" "Help shows title"
+    assert_contains "$output" "TVM - Terminus Version Manager" "Help shows title"
     assert_contains "$output" "Usage:" "Help shows usage"
-    assert_contains "$output" "terminus use" "Help shows use command"
-    assert_contains "$output" "terminus install" "Help shows install command"
+    assert_contains "$output" "tvm use" "Help shows use command"
+    assert_contains "$output" "tvm install" "Help shows install command"
 }
 
 # Test: Path command works
@@ -103,11 +106,38 @@ EOF
 # Test: terminus-vm wrapper works
 test_terminus_vm_wrapper() {
     test_start "terminus-vm wrapper works"
-    
+
     local output
     output="$("$TEST_BIN_DIR/terminus-vm" help 2>&1)"
-    
-    assert_contains "$output" "Terminus Version Manager" "terminus-vm wrapper shows help"
+
+    assert_contains "$output" "TVM - Terminus Version Manager" "terminus-vm wrapper shows help"
+}
+
+# Test: tvm alias works
+test_tvm_alias() {
+    test_start "tvm alias works"
+
+    local output
+    output="$("$TEST_BIN_DIR/tvm" help 2>&1)"
+
+    assert_contains "$output" "TVM - Terminus Version Manager" "tvm alias shows help"
+    assert_contains "$output" "tvm <command>" "tvm help mentions tvm command"
+}
+
+# Test: tvm list command works
+test_tvm_list() {
+    test_start "tvm list command works"
+
+    local output
+    output="$("$TEST_BIN_DIR/tvm" list 2>&1)"
+
+    # The output should either show "no versions installed yet" or show version list
+    if echo "$output" | grep -q "no versions installed yet"; then
+        assert_contains "$output" "no versions installed yet" "tvm list shows no versions message"
+    else
+        # If versions are installed, just check that the command works (no error)
+        assert_not_contains "$output" "Error:" "tvm list command works without error"
+    fi
 }
 
 # Test: Environment variable customization
@@ -156,7 +186,7 @@ test_install_script_dry_run() {
     local output
     PREFIX="/tmp/test-prefix-$$" output="$("$temp_install" 2>&1)"
     
-    assert_contains "$output" "Installing terminus and terminus-vm" "Install script shows installation message"
+    assert_contains "$output" "Installing TVM" "Install script shows installation message"
     
     rm -f "$temp_install"
 }
@@ -168,7 +198,7 @@ test_vm_prefix() {
     local output
     output="$("$TEST_BIN_DIR/terminus" @vm help 2>&1)"
 
-    assert_contains "$output" "Terminus Version Manager" "@vm prefix works"
+    assert_contains "$output" "TVM - Terminus Version Manager" "@vm prefix works"
 }
 
 # Test: Manager command detection
@@ -187,7 +217,7 @@ run_all_tests() {
     echo "Setting up test environment..."
     setup_test_env
     
-    echo "Running Terminus Version Manager tests..."
+    echo "Running TVM tests..."
     echo
     
     # Run all tests
@@ -197,6 +227,8 @@ run_all_tests() {
     test_list_empty
     test_version_resolution
     test_terminus_vm_wrapper
+    test_tvm_alias
+    test_tvm_list
     test_env_vars
     test_error_handling
     test_install_script

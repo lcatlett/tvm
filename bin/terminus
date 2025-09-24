@@ -199,16 +199,21 @@ tvm_import() {
 
 tvm_help() {
   cat <<HLP
-Terminus Version Manager
+TVM - Terminus Version Manager
 
 Usage:
-  terminus use <version|major|major.minor|latest>
-  terminus install <version|major|major.minor|latest>
-  terminus update|updates [--all]
-  terminus list|versions
-  terminus current|which
-  terminus path
-  terminus import <path-to-phar> [version]
+  tvm use <version|major|major.minor|latest>
+  tvm install <version|major|major.minor|latest>
+  tvm update|updates [--all]
+  tvm list|versions
+  tvm current|which
+  tvm path
+  tvm import <path-to-phar> [version]
+
+Aliases:
+  tvm <command>         - Primary command (recommended)
+  terminus <command>    - Smart routing (version management or Terminus execution)
+  terminus-vm <command> - Direct manager access
 
 Notes:
   - Manager subcommands can also be prefixed: terminus @vm <cmd> ...
@@ -281,7 +286,7 @@ exec_current() {
 
 main() {
   local base; base="$(basename "$0")"
-  if [ "$base" = "terminus-vm" ]; then
+  if [ "$base" = "terminus-vm" ] || [ "$base" = "tvm" ]; then
     run_manager "${1:-}" "${@:2}"
     exit $?
   fi
