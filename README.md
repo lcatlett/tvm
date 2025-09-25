@@ -2,17 +2,18 @@
 
 > **Switch Pantheon Terminus versions in a snap**
 
-Never get locked into a specific Terminus version again. Switch between Terminus 2.x, 3.x, and 4.x without breaking your workflows or dealing with Homebrew conflicts.
+ Switch between Terminus 2.x, 3.x, and 4.x without breaking your workflows or dealing with Homebrew conflicts.
 
 [![Tests](https://github.com/lcatlett/tvm/actions/workflows/test.yml/badge.svg)](https://github.com/lcatlett/tvm/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 ## ✨ Why Choose TVM
-- **📋 Reproduce exact Terminus context alongside application conxtext.** for scripts, CI/CD pipelines, or local testing
-- **🎯 Crutial for mixed and many-site portfolios** managing multiple Pantheon projects with different Terminus requirements
+- **📋 Reproduce exact Terminus context alongside application context** for scripts, CI/CD pipelines, or local testing
+- **🎯 Crucial for mixed and many-site portfolios** managing multiple Pantheon projects with different Terminus requirements
 - **⚡ Zero downtime** switching between versions - no reinstalls, no conflicts
 - **🔒 CI/CD ready** - pin exact versions for consistent deployments
 - **🛡️ Risk-free testing** - try new Terminus features without breaking production workflows
+- **🔌 Version-specific plugin management** - plugins automatically switch with Terminus versions
 - Also streamlines terminus plugin and terminus core development and testing
 
 ## 📋 Table of Contents
@@ -28,6 +29,7 @@ Never get locked into a specific Terminus version again. Switch between Terminus
   - [💡 Usage Examples](#-usage-examples)
     - [Basic Version Management](#basic-version-management)
     - [Advanced Usage](#advanced-usage)
+    - [Plugin Management](#plugin-management)
     - [Team Workflows](#team-workflows)
   - [🎯 Why Use TVM?](#-why-use-tvm)
     - [**Version Lock-in Issues**](#version-lock-in-issues)
@@ -50,6 +52,7 @@ Never get locked into a specific Terminus version again. Switch between Terminus
     - [Test Coverage](#test-coverage)
     - [CI/CD Pipeline](#cicd-pipeline)
     - [Contributing](#contributing)
+  - [📝 Changelog](#-changelog)
   - [⚠️ Disclaimer](#️-disclaimer)
 
 ## 🚀 Quick Start
@@ -68,9 +71,12 @@ tvm use latest   # Use newest available
 
 # 4. List installed versions
 tvm list
+
+# 5. Check plugin environment (optional)
+tvm plugins:status
 ```
 
-TVM handles the rest automatically.
+TVM handles version switching and plugin management automatically.
 
 ## 📦 Installation
 
@@ -162,6 +168,36 @@ export TERMINUS_VM_DIR="$HOME/my-terminus-versions"
 tvm install latest
 ```
 
+### Plugin Management
+
+TVM automatically manages version-specific plugin directories to prevent compatibility issues:
+
+```bash
+# Check current plugin environment
+tvm plugins:status
+
+# View plugin directories for current version
+tvm plugins:status
+# Output:
+# Current Terminus version: 3.6.2
+# Major version: 3.x
+# Plugin directory: ~/.terminus/plugins-3.x
+# Dependencies directory: ~/.terminus/dependencies-3.x
+
+# Switch versions - plugins automatically switch too
+tvm use 4.0.3      # Now uses plugins-4.x directory
+tvm use 3.6.2      # Now uses plugins-3.x directory
+
+# Manually trigger plugin migration (runs automatically on first use)
+tvm plugins:migrate
+```
+
+**How Plugin Management Works:**
+- **Version-specific directories**: `~/.terminus/plugins-3.x`, `~/.terminus/plugins-4.x`, etc.
+- **Automatic switching**: Plugin environment changes when you switch Terminus versions
+- **Symlink management**: `~/.terminus/plugins` points to the correct version-specific directory
+- **Seamless migration**: Existing plugins are automatically moved to version-specific directories
+
 ### Team Workflows
 
 ```bash
@@ -207,6 +243,11 @@ terminus auth:login --machine-token=$PANTHEON_TOKEN
 - **TVM Solution**: Standardize on specific versions per project with easy switching
 - **Use Case**: Ensure all developers use the same Terminus version for a given project
 
+### **Plugin Compatibility Issues**
+- **Problem**: Terminus plugins may not be compatible across major versions, causing conflicts or failures
+- **TVM Solution**: Automatic version-specific plugin management prevents cross-version conflicts
+- **Use Case**: Use different plugin versions for Terminus 3.x vs 4.x without manual directory management
+
 ## 🔧 How It Works
 
 **Simple and Transparent:**
@@ -215,10 +256,18 @@ terminus auth:login --machine-token=$PANTHEON_TOKEN
 - Smart command routing: TVM commands vs. Terminus passthrough
 - Zero-overhead execution via your system PHP binary
 
+**Plugin Management:**
+- Version-specific plugin directories: `~/.terminus/plugins-3.x`, `~/.terminus/plugins-4.x`
+- Automatic symlink management: `~/.terminus/plugins` → version-specific directory
+- Environment variables set for Terminus plugin discovery
+- One-time migration of existing plugins to version-specific structure
+
 **Environment Variables:**
 - `TERMINUS_VM_DIR` — Custom storage location (default: `~/.terminus/phars`)
 - `TERMINUS_PHP` — PHP binary to use (default: `php`)
 - `GITHUB_TOKEN` — Avoid API rate limits (optional)
+- `TERMINUS_PLUGINS_DIR` — Set automatically to version-specific plugin directory
+- `TERMINUS_DEPENDENCIES_DIR` — Set automatically to version-specific dependencies directory
 
 ## 🔗 Command Aliases
 
@@ -237,6 +286,10 @@ terminus-vm list   # Direct access
 # All show installed versions:
 * 3.6.2 (current)
   4.0.3
+
+# Plugin management commands (TVM-specific):
+tvm plugins:status     # Show current plugin environment
+tvm plugins:migrate    # Migrate existing plugins (runs automatically)
 ```
 
 ## ⚠️ Important Limitations
@@ -296,10 +349,11 @@ make clean
 
 ### Test Coverage
 
-The test suite includes **14 test cases** with **24+ assertions** covering:
+The test suite includes **14+ test cases** with **24+ assertions** covering:
 
 - **Core Functionality**: Script existence, permissions, help commands
 - **Version Management**: Install, switch, list, path operations
+- **Plugin Management**: Version-specific plugin directories, symlink management
 - **Command Aliases**: `terminus`, `terminus-vm`, and `tvm` command functionality
 - **Environment Handling**: Custom directories, PHP binaries
 - **Error Scenarios**: Invalid commands, missing versions
@@ -324,6 +378,9 @@ The test suite includes **14 test cases** with **24+ assertions** covering:
 6. **Push** to the branch: `git push origin feature/amazing-feature`
 7. **Open** a Pull Request
 
+## 📝 Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes, including the major plugin management enhancement.
 
 ## ⚠️ Disclaimer
 

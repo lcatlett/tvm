@@ -135,7 +135,18 @@ tvm_use() {
   [ -n "$ver" ] || die "Could not resolve version for '$want'"
   [ -f "$DIR/terminus-$ver.phar" ] || tvm_download "$ver"
   tvm_set_current_version "$ver"
+
+  # Run plugin migration on first use
+  migrate_existing_plugins
+
+  # Set up plugin environment for the selected version
+  setup_plugin_environment "$ver"
+
   printf "Now using Terminus %s\n" "$ver"
+
+  # Show plugin environment info
+  local major_version; major_version="$(echo "$ver" | cut -d. -f1)"
+  printf "Plugin environment: ~/.terminus/plugins-%s.x\n" "$major_version"
 }
 
 tvm_update() {
@@ -197,6 +208,83 @@ tvm_import() {
   printf "Imported Terminus %s -> %s\n" "$ver" "$dest"
 }
 
+setup_plugin_environment() {
+  local version="${1:?version required}"
+  local major_version; major_version="$(echo "$version" | cut -d. -f1)"
+  local terminus_home="$HOME/.terminus"
+
+  # Create version-specific directories if they don't exist
+  local plugins_dir="$terminus_home/plugins-${major_version}.x"
+  local deps_dir="$terminus_home/dependencies-${major_version}.x"
+
+  mkdir -p "$plugins_dir" "$deps_dir"
+
+  # Create or update symlinks to point to version-specific directories
+  # Remove existing symlinks/directories first to avoid conflicts
+  [ -L "$terminus_home/plugins" ] && rm "$terminus_home/plugins"
+  [ -L "$terminus_home/dependencies" ] && rm "$terminus_home/dependencies"
+
+  # Create symlinks to version-specific directories
+  ln -sf "$plugins_dir" "$terminus_home/plugins"
+  ln -sf "$deps_dir" "$terminus_home/dependencies"
+
+  # Set environment variables for Terminus plugin discovery
+  export TERMINUS_PLUGINS_DIR="$plugins_dir"
+  export TERMINUS_DEPENDENCIES_DIR="$deps_dir"
+  export TERMINUS_HOME="$terminus_home"
+}
+
+migrate_existing_plugins() {
+  local terminus_home="$HOME/.terminus"
+  local migrated_file="$terminus_home/.tvm_plugins_migrated"
+
+  # Only run migration once
+  [ -f "$migrated_file" ] && return 0
+
+  msg "Migrating existing plugins to version-specific directories..."
+
+  # Migrate existing plugin directories to version-specific ones
+  if [ -d "$terminus_home/plugins-3.x" ] && [ ! -L "$terminus_home/plugins-3.x" ]; then
+    if [ ! -d "$terminus_home/plugins-3.x-original" ]; then
+      mv "$terminus_home/plugins-3.x" "$terminus_home/plugins-3.x-original"
+      mkdir -p "$terminus_home/plugins-3.x"
+      # Copy contents back
+      if [ -d "$terminus_home/plugins-3.x-original" ]; then
+        cp -r "$terminus_home/plugins-3.x-original"/* "$terminus_home/plugins-3.x/" 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  # Migrate terminus-dependencies directories
+  for deps_dir in "$terminus_home"/terminus-dependencies-*; do
+    if [ -d "$deps_dir" ] && [ ! -L "$deps_dir" ]; then
+      local basename; basename="$(basename "$deps_dir")"
+      # Try to determine version from directory name or contents
+      local target_version="3"  # Default to 3.x for existing dependencies
+
+      # Check if this looks like a 4.x dependencies directory
+      if [ -f "$deps_dir/composer.json" ]; then
+        if grep -q '"pantheon-systems/terminus": "^4"' "$deps_dir/composer.json" 2>/dev/null; then
+          target_version="4"
+        fi
+      fi
+
+      local target_dir="$terminus_home/dependencies-${target_version}.x"
+      mkdir -p "$target_dir"
+
+      # Copy contents to version-specific directory
+      if [ -d "$deps_dir" ]; then
+        cp -r "$deps_dir"/* "$target_dir/" 2>/dev/null || true
+        msg "Migrated $basename to dependencies-${target_version}.x"
+      fi
+    fi
+  done
+
+  # Mark migration as complete
+  touch "$migrated_file"
+  msg "Plugin migration completed"
+}
+
 tvm_help() {
   cat <<HLP
 TVM - Terminus Version Manager
@@ -209,6 +297,8 @@ Usage:
   tvm current|which
   tvm path
   tvm import <path-to-phar> [version]
+  tvm plugins:migrate    - Migrate existing plugins to version-specific directories
+  tvm plugins:status     - Show current plugin environment status
 
 Aliases:
   tvm <command>         - Primary command (recommended)
@@ -218,6 +308,7 @@ Aliases:
 Notes:
   - Manager subcommands can also be prefixed: terminus @vm <cmd> ...
   - For normal Terminus usage, run: terminus <args>
+  - Plugin directories are now managed per major version (e.g., plugins-3.x, plugins-4.x)
   - Env vars:
       TERMINUS_VM_DIR (default: ~/.terminus/phars)
       TERMINUS_PHP    (default: php)
@@ -227,9 +318,61 @@ HLP
 
 is_manager_cmd() {
   case "${1:-}" in
-    @vm|use|install|update|updates|list|versions|current|which|path|import|help|-h|--help) return 0 ;;
+    @vm|use|install|update|updates|list|versions|current|which|path|import|plugins:migrate|plugins:status|help|-h|--help) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+tvm_plugins_status() {
+  local curr; curr="$(tvm_get_current_version || true)"
+  local terminus_home="$HOME/.terminus"
+
+  if [ -z "$curr" ]; then
+    printf "No Terminus version currently selected\n"
+    return 1
+  fi
+
+  local major_version; major_version="$(echo "$curr" | cut -d. -f1)"
+  local plugins_dir="$terminus_home/plugins-${major_version}.x"
+  local deps_dir="$terminus_home/dependencies-${major_version}.x"
+
+  printf "Current Terminus version: %s\n" "$curr"
+  printf "Major version: %s.x\n" "$major_version"
+  printf "Plugin directory: %s\n" "$plugins_dir"
+  printf "Dependencies directory: %s\n" "$deps_dir"
+
+  # Check if directories exist and show their status
+  if [ -d "$plugins_dir" ]; then
+    local plugin_count; plugin_count="$(find "$plugins_dir" -maxdepth 1 -type d | wc -l)"
+    plugin_count=$((plugin_count - 1))  # Subtract 1 for the directory itself
+    printf "Plugins directory exists with %d subdirectories\n" "$plugin_count"
+  else
+    printf "Plugins directory does not exist\n"
+  fi
+
+  if [ -d "$deps_dir" ]; then
+    printf "Dependencies directory exists\n"
+    if [ -f "$deps_dir/composer.json" ]; then
+      printf "Dependencies have composer.json\n"
+    fi
+  else
+    printf "Dependencies directory does not exist\n"
+  fi
+
+  # Check symlink status
+  if [ -L "$terminus_home/plugins" ]; then
+    local link_target; link_target="$(readlink "$terminus_home/plugins")"
+    printf "Plugin symlink points to: %s\n" "$link_target"
+  else
+    printf "No plugin symlink found\n"
+  fi
+
+  if [ -L "$terminus_home/dependencies" ]; then
+    local link_target; link_target="$(readlink "$terminus_home/dependencies")"
+    printf "Dependencies symlink points to: %s\n" "$link_target"
+  else
+    printf "No dependencies symlink found\n"
+  fi
 }
 
 run_manager() {
@@ -244,7 +387,15 @@ run_manager() {
       tvm_mkdir
       local want="${1:-}"; [ -n "$want" ] || die "Usage: terminus install <version|major|major.minor|latest>"
       local ver; ver="$(tvm_resolve_version "$want")"; [ -n "$ver" ] || die "Could not resolve version."
-      tvm_download "$ver"; tvm_set_current_version "$ver"; printf "Now using Terminus %s\n" "$ver"
+      tvm_download "$ver"; tvm_set_current_version "$ver"
+
+      # Run plugin migration and setup environment
+      migrate_existing_plugins
+      setup_plugin_environment "$ver"
+
+      printf "Now using Terminus %s\n" "$ver"
+      local major_version; major_version="$(echo "$ver" | cut -d. -f1)"
+      printf "Plugin environment: ~/.terminus/plugins-%s.x\n" "$major_version"
       ;;
     update|updates) tvm_mkdir; tvm_update "${1:-}";;
     list|versions) tvm_mkdir; tvm_list;;
@@ -259,6 +410,8 @@ run_manager() {
       ;;
     path) printf "%s\n" "$DIR";;
     import) tvm_mkdir; tvm_import "${1:-}" "${2:-}";;
+    plugins:migrate) tvm_mkdir; migrate_existing_plugins;;
+    plugins:status) tvm_mkdir; tvm_plugins_status;;
     help|-h|--help|"") tvm_help;;
     *) die "Unknown command: $sub";;
   esac
@@ -277,16 +430,27 @@ exec_current() {
       tvm_download "$latest"
       tvm_set_current_version "$latest"
       phar="$DIR/terminus-$latest.phar"
+      curr="$latest"
       msg "Auto-selected Terminus $latest"
     fi
   fi
   [ -f "$phar" ] || die "No Terminus PHAR available. Try: terminus updates"
+
+  # Set up version-specific plugin environment before executing Terminus
+  if [ -n "$curr" ]; then
+    # Run plugin migration on first execution
+    migrate_existing_plugins
+
+    # Set up plugin environment for the current version
+    setup_plugin_environment "$curr"
+  fi
+
   exec "$PHP_BIN" "$phar" "$@"
 }
 
 main() {
   local base; base="$(basename "$0")"
-  if [ "$base" = "terminus-vm" ] || [ "$base" = "tvm" ]; then
+  if [ "$base" = "terminus-vm" ] || [ "$base" = "tvm" ] || [ "${TVM_CALLED_AS:-}" = "tvm" ]; then
     run_manager "${1:-}" "${@:2}"
     exit $?
   fi

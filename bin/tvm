@@ -2,4 +2,5 @@
 # TVM - Terminus Version Manager alias
 # This is a convenient alias for terminus-vm
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export TVM_CALLED_AS="tvm"
 exec "$SCRIPT_DIR/terminus" "$@"

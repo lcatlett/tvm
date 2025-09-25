@@ -212,6 +212,35 @@ test_manager_command_detection() {
     assert_contains "$output" "no versions installed yet" "List command is detected as manager command"
 }
 
+# Test: Plugin management commands
+test_plugin_commands() {
+    test_start "Plugin management commands"
+
+    # Test plugins:status command exists
+    local output
+    output="$("$TEST_BIN_DIR/tvm" plugins:status 2>&1)" || true
+
+    assert_contains "$output" "No Terminus version currently selected" "plugins:status command works"
+
+    # Test plugins:migrate command exists
+    output="$("$TEST_BIN_DIR/tvm" plugins:migrate 2>&1)" || true
+
+    # Should not error out (migration creates directories)
+    assert_success "plugins:migrate command works"
+}
+
+# Test: Help includes plugin commands
+test_help_includes_plugins() {
+    test_start "Help includes plugin commands"
+
+    local output
+    output="$("$TEST_BIN_DIR/tvm" help 2>&1)"
+
+    assert_contains "$output" "plugins:migrate" "Help includes plugins:migrate command"
+    assert_contains "$output" "plugins:status" "Help includes plugins:status command"
+    assert_contains "$output" "Plugin directories are now managed per major version" "Help mentions plugin management"
+}
+
 # Main test runner
 run_all_tests() {
     echo "Setting up test environment..."
@@ -235,6 +264,8 @@ run_all_tests() {
     test_install_script_dry_run
     test_vm_prefix
     test_manager_command_detection
+    test_plugin_commands
+    test_help_includes_plugins
     
     # Cleanup
     cleanup_test_env
