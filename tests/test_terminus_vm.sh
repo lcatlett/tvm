@@ -223,10 +223,11 @@ test_plugin_commands() {
     assert_contains "$output" "No Terminus version currently selected" "plugins:status command works"
 
     # Test plugins:migrate command exists
-    output="$("$TEST_BIN_DIR/tvm" plugins:migrate 2>&1)" || true
+    "$TEST_BIN_DIR/tvm" plugins:migrate >/dev/null 2>&1
+    local exit_code=$?
 
     # Should not error out (migration creates directories)
-    assert_success "plugins:migrate command works"
+    assert_success "plugins:migrate command works" "$exit_code"
 }
 
 # Test: Help includes plugin commands

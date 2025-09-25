@@ -110,11 +110,22 @@ assert_command_success() {
 assert_command_failure() {
     local command="$1"
     local test_name="$2"
-    
+
     if ! eval "$command" >/dev/null 2>&1; then
         test_pass "$test_name"
     else
         test_fail "$test_name" "Command '$command' should have failed"
+    fi
+}
+
+assert_success() {
+    local test_name="$1"
+    local exit_code="${2:-$?}"
+
+    if [ "$exit_code" -eq 0 ]; then
+        test_pass "$test_name"
+    else
+        test_fail "$test_name" "Expected success (exit code 0), got exit code $exit_code"
     fi
 }
 
