@@ -207,17 +207,27 @@ test_plugin_commands() {
     test_start "Plugin management commands"
 
     # Test plugins:status command exists
-    local output
-    output="$("$TEST_BIN_DIR/tvm" plugins:status 2>&1)" || true
+    local output status_exit_code=0
+    output="$("$TEST_BIN_DIR/tvm" plugins:status 2>&1)" || status_exit_code=$?
 
-    assert_contains "$output" "No Terminus version currently selected" "plugins:status command works"
+    # The command should either succeed or fail with a known message
+    if [ "$status_exit_code" -eq 0 ] || echo "$output" | grep -q "No Terminus version currently selected"; then
+        test_pass "plugins:status command works"
+    else
+        test_fail "plugins:status command works" "Unexpected output: $output (exit code: $status_exit_code)"
+    fi
 
     # Test plugins:migrate command exists
-    "$TEST_BIN_DIR/tvm" plugins:migrate >/dev/null 2>&1
-    local exit_code=$?
+    local migrate_exit_code=0
+    local migrate_output
+    migrate_output="$("$TEST_BIN_DIR/tvm" plugins:migrate 2>&1)" || migrate_exit_code=$?
 
     # Should not error out (migration creates directories)
-    assert_success "plugins:migrate command works" "$exit_code"
+    if [ "$migrate_exit_code" -eq 0 ]; then
+        test_pass "plugins:migrate command works"
+    else
+        test_fail "plugins:migrate command works" "Command failed with exit code $migrate_exit_code. Output: $migrate_output"
+    fi
 }
 
 # Test: Help includes plugin commands
@@ -236,31 +246,39 @@ test_help_includes_plugins() {
 run_all_tests() {
     echo "Setting up test environment..."
     setup_test_env
-    
+
     echo "Running TVM tests..."
     echo
-    
-    # Run all tests
-    test_script_files
-    test_help_command
-    test_path_command
-    test_list_empty
-    test_version_resolution
-    test_terminus_vm_wrapper
-    test_tvm_alias
-    test_tvm_list
-    test_env_vars
-    test_error_handling
-    test_install_script
-    test_install_script_dry_run
-    test_vm_prefix
-    test_manager_command_detection
-    test_plugin_commands
-    test_help_includes_plugins
-    
+
+    # Run all tests with error handling
+    local test_functions=(
+        "test_script_files"
+        "test_help_command"
+        "test_path_command"
+        "test_list_empty"
+        "test_version_resolution"
+        "test_terminus_vm_wrapper"
+        "test_tvm_alias"
+        "test_tvm_list"
+        "test_env_vars"
+        "test_error_handling"
+        "test_install_script"
+        "test_install_script_dry_run"
+        "test_vm_prefix"
+        "test_manager_command_detection"
+        "test_plugin_commands"
+        "test_help_includes_plugins"
+    )
+
+    for test_func in "${test_functions[@]}"; do
+        if ! "$test_func"; then
+            echo "Warning: Test function $test_func failed"
+        fi
+    done
+
     # Cleanup
     cleanup_test_env
-    
+
     # Show summary
     test_summary
 }

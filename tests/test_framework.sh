@@ -122,6 +122,12 @@ assert_success() {
     local test_name="$1"
     local exit_code="${2:-$?}"
 
+    # Ensure exit_code is a number
+    if ! [[ "$exit_code" =~ ^[0-9]+$ ]]; then
+        test_fail "$test_name" "Invalid exit code: '$exit_code'"
+        return
+    fi
+
     if [ "$exit_code" -eq 0 ]; then
         test_pass "$test_name"
     else
