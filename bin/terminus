@@ -238,6 +238,9 @@ migrate_existing_plugins() {
   local terminus_home="$HOME/.terminus"
   local migrated_file="$terminus_home/.tvm_plugins_migrated"
 
+  # Ensure terminus home directory exists
+  mkdir -p "$terminus_home"
+
   # Only run migration once
   [ -f "$migrated_file" ] && return 0
 
