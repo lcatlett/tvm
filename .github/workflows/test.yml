@@ -49,10 +49,12 @@ jobs:
         ls -la "$TEMP_PREFIX/bin/"
         test -x "$TEMP_PREFIX/bin/terminus"
         test -x "$TEMP_PREFIX/bin/terminus-vm"
+        test -x "$TEMP_PREFIX/bin/tvm"
 
         # Test basic functionality with installed version
         export PATH="$TEMP_PREFIX/bin:$PATH"
-        terminus help | grep -q "Terminus Version Manager"
+        export TERMINUS_VM_DIR="/tmp/terminus-vm-test-data"
+        terminus help | grep -q "TVM - Terminus Version Manager"
         terminus path | grep -q "/tmp"
 
         echo "✅ Installation test passed"
@@ -90,6 +92,8 @@ jobs:
         PREFIX="$TEMP_PREFIX" ./install.sh
 
         export PATH="$TEMP_PREFIX/bin:$PATH"
-        terminus help | grep -q "Terminus Version Manager"
+        export TERMINUS_VM_DIR="/tmp/terminus-vm-test-data"
+        terminus help | grep -q "TVM - Terminus Version Manager"
+        terminus path | grep -q "/tmp"
 
         echo "✅ macOS installation test passed"

@@ -1,6 +1,6 @@
 # TVM - Terminus Version Manager
 
-> **Switch Pantheon Terminus versions seamlessly - zero downtime, zero hassle**
+> **Switch Terminus versions in a snap**
 
 Switch between Terminus 2.x, 3.x, and 4.x without breaking your workflows or dealing with Homebrew conflicts.
 
@@ -10,7 +10,7 @@ Switch between Terminus 2.x, 3.x, and 4.x without breaking your workflows or dea
 
 - **Reproduce exact Terminus context** for scripts, CI/CD pipelines, and local testing
 - **Essential for multi-project portfolios** managing different Terminus requirements
-- **Zero downtime switching** - no reinstalls, no conflicts
+- **Instant switching** - no reinstalls, no conflicts
 - **CI/CD ready** - pin exact versions for consistent deployments
 - **Risk-free testing** - try new features without breaking production workflows
 - **Version-specific plugin management** - plugins automatically switch with Terminus versions
@@ -36,7 +36,7 @@ Switch between Terminus 2.x, 3.x, and 4.x without breaking your workflows or dea
 # Install your first Terminus version
 tvm install latest
 
-# Switch versions seamlessly
+# Switch versions instantly
 tvm use 3.6.2    # Use specific version
 tvm use 4        # Use latest 4.x
 tvm use latest   # Use newest available
@@ -171,7 +171,7 @@ tvm plugins:migrate
 - **Version-specific directories**: `~/.terminus/plugins-3.x`, `~/.terminus/plugins-4.x`, etc.
 - **Automatic switching**: Plugin environment changes when you switch Terminus versions
 - **Symlink management**: `~/.terminus/plugins` points to the correct version-specific directory
-- **Seamless migration**: Existing plugins are automatically moved to version-specific directories
+- **Automatic migration**: Existing plugins are automatically moved to version-specific directories
 
 ### Team Workflows
 
@@ -190,7 +190,7 @@ terminus auth:login --machine-token=$PANTHEON_TOKEN
 
 ### Version Lock-in Issues
 - **Problem**: Official installation methods lock you to a single version
-- **Solution**: Install and switch between multiple Terminus versions seamlessly
+- **Solution**: Install and switch between multiple Terminus versions instantly
 - **Use Case**: Test new features in Terminus 4.x while maintaining legacy script compatibility
 
 ### Homebrew Conflicts
