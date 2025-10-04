@@ -228,6 +228,18 @@ test_plugin_commands() {
     else
         test_fail "plugins:migrate command works" "Command failed with exit code $migrate_exit_code. Output: $migrate_output"
     fi
+
+    # Test plugins:clean command exists
+    local clean_exit_code=0
+    local clean_output
+    clean_output="$("$TEST_BIN_DIR/tvm" plugins:clean 2>&1)" || clean_exit_code=$?
+
+    # The command should either succeed or fail with a known message
+    if [ "$clean_exit_code" -eq 0 ] || echo "$clean_output" | grep -q "No Terminus version currently selected"; then
+        test_pass "plugins:clean command works"
+    else
+        test_fail "plugins:clean command works" "Unexpected output: $clean_output (exit code: $clean_exit_code)"
+    fi
 }
 
 # Test: Help includes plugin commands
@@ -239,6 +251,7 @@ test_help_includes_plugins() {
 
     assert_contains "$output" "plugins:migrate" "Help includes plugins:migrate command"
     assert_contains "$output" "plugins:status" "Help includes plugins:status command"
+    assert_contains "$output" "plugins:clean" "Help includes plugins:clean command"
     assert_contains "$output" "Plugin directories are now managed per major version" "Help mentions plugin management"
 }
 

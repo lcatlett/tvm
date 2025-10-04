@@ -228,10 +228,135 @@ setup_plugin_environment() {
   ln -sf "$plugins_dir" "$terminus_home/plugins"
   ln -sf "$deps_dir" "$terminus_home/dependencies"
 
+  # Initialize dependencies directory with proper composer.json if it doesn't exist
+  initialize_dependencies_directory "$deps_dir" "$major_version"
+
+  # Clean up any stale composer lock files that might cause conflicts
+  clean_dependencies_cache "$deps_dir"
+
   # Set environment variables for Terminus plugin discovery
   export TERMINUS_PLUGINS_DIR="$plugins_dir"
   export TERMINUS_DEPENDENCIES_DIR="$deps_dir"
   export TERMINUS_HOME="$terminus_home"
+
+  # For Terminus 4.x compatibility, also set the terminus-dependencies directory
+  # This is used by the plugin:refresh command
+  export TERMINUS_TERMINUS_DEPENDENCIES_DIR="$deps_dir"
+  export TERMINUS_DEPENDENCIES_BASE_DIR="$terminus_home/terminus-dependencies"
+
+  # Create a symlink from terminus-dependencies to our version-specific directory
+  local terminus_deps_link="$terminus_home/terminus-dependencies"
+  if [ -L "$terminus_deps_link" ]; then
+    rm "$terminus_deps_link"
+  elif [ -d "$terminus_deps_link" ]; then
+    # If it's a directory, back it up and replace with symlink
+    mv "$terminus_deps_link" "$terminus_deps_link.backup.$(date +%s)" 2>/dev/null || true
+  fi
+  ln -sf "$deps_dir" "$terminus_deps_link"
+
+  # Also ensure the symlinked dependencies directory is clean
+  # This is important because Terminus uses ~/.terminus/dependencies directly
+  if [ -L "$terminus_home/dependencies" ]; then
+    clean_dependencies_cache "$terminus_home/dependencies"
+  fi
+}
+
+initialize_dependencies_directory() {
+  local deps_dir="${1:?dependencies directory required}"
+  local major_version="${2:?major version required}"
+  local composer_json="$deps_dir/composer.json"
+
+  # If composer.json doesn't exist, create a clean one
+  if [ ! -f "$composer_json" ]; then
+    cat > "$composer_json" <<EOF
+{
+    "name": "pantheon-systems/terminus-dependencies",
+    "require": {},
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "repositories": {
+        "pantheon-systems/terminus-plugins": {
+            "type": "path",
+            "url": "../plugins-${major_version}.x",
+            "options": {
+                "symlink": true
+            }
+        }
+    }
+}
+EOF
+    msg "Initialized clean composer.json for Terminus ${major_version}.x dependencies"
+  else
+    # Check if the existing composer.json has the correct plugins path
+    local expected_path="../plugins-${major_version}.x"
+    if ! grep -q "\"url\": \"$expected_path\"" "$composer_json" 2>/dev/null; then
+      # Update the plugins path in the existing composer.json
+      if command -v sed >/dev/null 2>&1; then
+        # Create a backup
+        cp "$composer_json" "$composer_json.backup"
+
+        # Update the plugins path using sed
+        sed -i.tmp "s|\"url\": \"../plugins-[0-9]\\+\\.x\"|\"url\": \"$expected_path\"|g" "$composer_json" 2>/dev/null || {
+          # If sed fails, restore backup and create new file
+          mv "$composer_json.backup" "$composer_json"
+          cat > "$composer_json" <<EOF
+{
+    "name": "pantheon-systems/terminus-dependencies",
+    "require": {},
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "repositories": {
+        "pantheon-systems/terminus-plugins": {
+            "type": "path",
+            "url": "../plugins-${major_version}.x",
+            "options": {
+                "symlink": true
+            }
+        }
+    }
+}
+EOF
+          msg "Reset composer.json for Terminus ${major_version}.x dependencies"
+        }
+        # Clean up temporary files
+        rm -f "$composer_json.tmp" "$composer_json.backup" 2>/dev/null || true
+      fi
+    fi
+  fi
+}
+
+clean_dependencies_cache() {
+  local deps_dir="${1:?dependencies directory required}"
+
+  # Remove composer.lock to prevent version conflicts
+  if [ -f "$deps_dir/composer.lock" ]; then
+    rm -f "$deps_dir/composer.lock"
+    msg "Cleared composer.lock to prevent dependency conflicts"
+  fi
+
+  # Remove vendor directory to force fresh install
+  if [ -d "$deps_dir/vendor" ]; then
+    rm -rf "$deps_dir/vendor"
+    msg "Cleared vendor directory to prevent dependency conflicts"
+  fi
+
+  # Remove any existing composer.json that might have conflicting dependencies
+  # We'll recreate it with a clean state
+  if [ -f "$deps_dir/composer.json" ]; then
+    local has_custom_repos=0
+    # Check if there are custom repositories we should preserve
+    if grep -q '"repositories"' "$deps_dir/composer.json" 2>/dev/null; then
+      if grep -q '"type": "path"' "$deps_dir/composer.json" 2>/dev/null; then
+        has_custom_repos=1
+      fi
+    fi
+
+    # If there are no custom repositories, or if there are conflicts, reset the file
+    if [ "$has_custom_repos" -eq 0 ] || grep -q '"require".*{.*[^{}]*}' "$deps_dir/composer.json" 2>/dev/null; then
+      rm -f "$deps_dir/composer.json"
+      msg "Cleared composer.json to prevent dependency conflicts"
+    fi
+  fi
 }
 
 migrate_existing_plugins() {
@@ -302,6 +427,7 @@ Usage:
   tvm import <path-to-phar> [version]
   tvm plugins:migrate    - Migrate existing plugins to version-specific directories
   tvm plugins:status     - Show current plugin environment status
+  tvm plugins:clean      - Clean dependencies cache to resolve conflicts
 
 Aliases:
   tvm <command>         - Primary command (recommended)
@@ -321,7 +447,7 @@ HLP
 
 is_manager_cmd() {
   case "${1:-}" in
-    @vm|use|install|update|updates|list|versions|current|which|path|import|plugins:migrate|plugins:status|help|-h|--help) return 0 ;;
+    @vm|use|install|update|updates|list|versions|current|which|path|import|plugins:migrate|plugins:status|plugins:clean|help|-h|--help) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -378,6 +504,31 @@ tvm_plugins_status() {
   fi
 }
 
+tvm_plugins_clean() {
+  local curr; curr="$(tvm_get_current_version || true)"
+  local terminus_home="$HOME/.terminus"
+
+  if [ -z "$curr" ]; then
+    printf "No Terminus version currently selected\n"
+    return 1
+  fi
+
+  local major_version; major_version="$(echo "$curr" | cut -d. -f1)"
+  local deps_dir="$terminus_home/dependencies-${major_version}.x"
+
+  printf "Cleaning dependencies cache for Terminus %s.x...\n" "$major_version"
+
+  if [ -d "$deps_dir" ]; then
+    clean_dependencies_cache "$deps_dir"
+    initialize_dependencies_directory "$deps_dir" "$major_version"
+    printf "✅ Dependencies cache cleaned successfully\n"
+    printf "You can now run 'terminus plugin:refresh' to reinstall dependencies\n"
+  else
+    printf "Dependencies directory does not exist: %s\n" "$deps_dir"
+    return 1
+  fi
+}
+
 run_manager() {
   local sub="${1:-}"
   shift || true
@@ -415,6 +566,7 @@ run_manager() {
     import) tvm_mkdir; tvm_import "${1:-}" "${2:-}";;
     plugins:migrate) tvm_mkdir; migrate_existing_plugins;;
     plugins:status) tvm_mkdir; tvm_plugins_status;;
+    plugins:clean) tvm_mkdir; tvm_plugins_clean;;
     help|-h|--help|"") tvm_help;;
     *) die "Unknown command: $sub";;
   esac
